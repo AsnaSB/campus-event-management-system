@@ -2,6 +2,10 @@ from django.db import models
 from django.contrib.auth.models import User
 from clubs.models import Club
 
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+import re
+
 # Create your models here.
 class EventType(models.TextChoices):
     WORKSHOP = "Workshop", "Workshop"
@@ -140,6 +144,53 @@ class Event(models.Model):
         ordering = ["-start_datetime"]
         verbose_name = "Event"
         verbose_name_plural = "Events"
+
+    def clean(self):
+        """
+        Performs custom validation for the Event model.
+        """
+
+        errors = {}
+
+        # End time must be after start time
+        if self.start_datetime and self.end_datetime:
+            if self.end_datetime <= self.start_datetime:
+                errors["end_datetime"] = (
+                    "The event end date and time must be after the start date and time."
+                )
+
+        # Registration deadline must be before or equal to event start
+        if self.registration_deadline and self.start_datetime:
+            if self.registration_deadline > self.start_datetime:
+                errors["registration_deadline"] = (
+                    "The registration deadline cannot be after the event start date and time."
+                )
+
+        # Registration deadline must not be after the event end
+        if self.registration_deadline and self.end_datetime:
+            if self.registration_deadline > self.end_datetime:
+                errors["registration_deadline"] = (
+                    "The registration deadline cannot be after the event end date and time."
+                )
+
+        # Validate coordinator phone number
+        if self.coordinator_phone:
+            phone_pattern = r"^[6-9]\d{9}$"
+
+            if not re.match(phone_pattern, self.coordinator_phone):
+                errors["coordinator_phone"] = (
+                    "Enter a valid 10-digit Indian mobile number."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """
+        Runs model validation before saving.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title
